@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 enum FeedKind: String, Sendable {
     case recommended
@@ -18,8 +18,7 @@ protocol FeedServiceProtocol: Sendable {
     func fetchFollowingUserIds(of userId: String) async throws -> Set<String>
 }
 
-/// Stage 3: реализуем алгоритм рекомендаций (для MVP — просто по `createdAt desc`).
-final class FeedService: FeedServiceProtocol {
+final class FeedService: FeedServiceProtocol, @unchecked Sendable {
 
     static let shared = FeedService()
 

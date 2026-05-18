@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol LikeServiceProtocol: Sendable {
     func likePost(userId: String, postId: String) async throws
@@ -9,7 +9,7 @@ protocol LikeServiceProtocol: Sendable {
     func unlikeComment(userId: String, postId: String, commentId: String) async throws
 }
 
-final class LikeService: LikeServiceProtocol {
+final class LikeService: LikeServiceProtocol, @unchecked Sendable {
 
     static let shared = LikeService()
 

@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol UserServiceProtocol: Sendable {
     func fetchUser(id: String) async throws -> AppUser?
@@ -8,7 +8,7 @@ protocol UserServiceProtocol: Sendable {
     func updateUser(_ user: AppUser) async throws
 }
 
-final class UserService: UserServiceProtocol {
+final class UserService: UserServiceProtocol, @unchecked Sendable {
 
     static let shared = UserService()
 

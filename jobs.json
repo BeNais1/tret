@@ -1,0 +1,129 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 76521017792,
+      "run_id": 26032258516,
+      "workflow_name": "iOS Build",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/BeNais1/tret/actions/runs/26032258516",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOSg2Lv88AAAAR0QIRwA",
+      "head_sha": "71ade810f5508a676fbde735d71c5fa732339f8f",
+      "url": "https://api.github.com/repos/BeNais1/tret/actions/jobs/76521017792",
+      "html_url": "https://github.com/BeNais1/tret/actions/runs/26032258516/job/76521017792",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-05-18T12:02:33Z",
+      "started_at": "2026-05-18T12:02:36Z",
+      "completed_at": "2026-05-18T12:08:38Z",
+      "name": "Build (XcodeGen + xcodebuild)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-05-18T12:02:36Z",
+          "completed_at": "2026-05-18T12:02:37Z"
+        },
+        {
+          "name": "Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-05-18T12:02:37Z",
+          "completed_at": "2026-05-18T12:02:39Z"
+        },
+        {
+          "name": "Show available Xcode versions",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-05-18T12:02:39Z",
+          "completed_at": "2026-05-18T12:02:39Z"
+        },
+        {
+          "name": "Select latest Xcode",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-05-18T12:02:39Z",
+          "completed_at": "2026-05-18T12:02:46Z"
+        },
+        {
+          "name": "Install XcodeGen",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-05-18T12:02:46Z",
+          "completed_at": "2026-05-18T12:03:10Z"
+        },
+        {
+          "name": "Stub GoogleService-Info.plist (if missing)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-05-18T12:03:10Z",
+          "completed_at": "2026-05-18T12:03:10Z"
+        },
+        {
+          "name": "Generate Xcode project",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-05-18T12:03:10Z",
+          "completed_at": "2026-05-18T12:03:10Z"
+        },
+        {
+          "name": "Resolve Swift packages",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-05-18T12:03:10Z",
+          "completed_at": "2026-05-18T12:04:55Z"
+        },
+        {
+          "name": "List iOS simulators",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-05-18T12:04:55Z",
+          "completed_at": "2026-05-18T12:04:59Z"
+        },
+        {
+          "name": "Build for iOS Simulator",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 10,
+          "started_at": "2026-05-18T12:04:59Z",
+          "completed_at": "2026-05-18T12:08:32Z"
+        },
+        {
+          "name": "Post Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-05-18T12:08:32Z",
+          "completed_at": "2026-05-18T12:08:33Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-05-18T12:08:33Z",
+          "completed_at": "2026-05-18T12:08:36Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/BeNais1/tret/check-runs/76521017792",
+      "labels": [
+        "macos-15"
+      ],
+      "runner_id": 1000000035,
+      "runner_name": "GitHub Actions 1000000035",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}

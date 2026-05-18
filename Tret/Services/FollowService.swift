@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol FollowServiceProtocol: Sendable {
     func follow(currentUserId: String, targetUserId: String) async throws
@@ -9,7 +9,7 @@ protocol FollowServiceProtocol: Sendable {
     func unhideFromRecommendations(currentUserId: String, hiddenUserId: String) async throws
 }
 
-final class FollowService: FollowServiceProtocol {
+final class FollowService: FollowServiceProtocol, @unchecked Sendable {
 
     static let shared = FollowService()
 

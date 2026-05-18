@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol CommentServiceProtocol: Sendable {
     func create(_ comment: Comment) async throws
@@ -7,7 +7,7 @@ protocol CommentServiceProtocol: Sendable {
     func fetchByPost(postId: String, sortedByLikes: Bool, pageSize: Int) async throws -> [Comment]
 }
 
-final class CommentService: CommentServiceProtocol {
+final class CommentService: CommentServiceProtocol, @unchecked Sendable {
 
     static let shared = CommentService()
 

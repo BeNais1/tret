@@ -1,13 +1,13 @@
 import Foundation
 import UIKit
-import FirebaseStorage
+@preconcurrency import FirebaseStorage
 
 protocol StorageServiceProtocol: Sendable {
     func uploadAvatar(userId: String, imageData: Data) async throws -> URL
     func uploadPostImage(userId: String, postId: String, index: Int, imageData: Data) async throws -> URL
 }
 
-final class StorageService: StorageServiceProtocol {
+final class StorageService: StorageServiceProtocol, @unchecked Sendable {
 
     static let shared = StorageService()
 

@@ -2,13 +2,7 @@ import Foundation
 
 enum DateFormatterHelper {
 
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
-
-    private static let absoluteFormatter: DateFormatter = {
+    nonisolated(unsafe) private static let absoluteFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateStyle = .medium

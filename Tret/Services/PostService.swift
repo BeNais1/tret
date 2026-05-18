@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol PostServiceProtocol: Sendable {
     func create(_ post: Post) async throws
@@ -9,8 +9,7 @@ protocol PostServiceProtocol: Sendable {
     func fetchByAuthor(authorId: String, pageSize: Int, after lastDocument: DocumentSnapshot?) async throws -> (posts: [Post], lastDocument: DocumentSnapshot?)
 }
 
-/// Stage 2: полноценная реализация. Сейчас — заготовка-заглушка для DI.
-final class PostService: PostServiceProtocol {
+final class PostService: PostServiceProtocol, @unchecked Sendable {
 
     static let shared = PostService()
 

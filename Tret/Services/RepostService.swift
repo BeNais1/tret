@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 
 protocol RepostServiceProtocol: Sendable {
     func repost(userId: String, originalPost: Post) async throws
@@ -8,7 +8,7 @@ protocol RepostServiceProtocol: Sendable {
     func fetchReposts(of userId: String, pageSize: Int) async throws -> [Repost]
 }
 
-final class RepostService: RepostServiceProtocol {
+final class RepostService: RepostServiceProtocol, @unchecked Sendable {
 
     static let shared = RepostService()
 
