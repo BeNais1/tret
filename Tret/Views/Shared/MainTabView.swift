@@ -9,6 +9,7 @@ struct MainTabView: View {
     let currentUser: AppUser
 
     @State private var selection: MainTab = .home
+    @State private var postDraft = PostDraft()
 
     var body: some View {
         TabView(selection: $selection) {
@@ -17,7 +18,14 @@ struct MainTabView: View {
             }
 
             Tab("Создать", systemImage: "plus.circle.fill", value: MainTab.create) {
-                NavigationStack { CreatePostPlaceholder() }
+                NavigationStack {
+                    CreatePostView(
+                        currentUser: currentUser,
+                        draft: $postDraft
+                    ) {
+                        selection = .home
+                    }
+                }
             }
 
             Tab(value: MainTab.search, role: .search) {
@@ -27,7 +35,7 @@ struct MainTabView: View {
             }
 
             Tab("Профиль", systemImage: "person.circle.fill", value: MainTab.profile) {
-                NavigationStack { ProfilePlaceholder(user: currentUser) }
+                NavigationStack { ProfileView(user: currentUser) }
             }
         }
         .tint(Color("BrandGradientStart"))
@@ -55,60 +63,6 @@ private struct SearchPlaceholder: View {
             subtitle: "Ищи разработчиков по нику и хэштегам — открываем в следующем апдейте."
         )
         .navigationTitle("Поиск")
-    }
-}
-
-private struct CreatePostPlaceholder: View {
-    var body: some View {
-        ComingSoonScreen(
-            icon: "square.and.pencil",
-            title: "Новый пост",
-            subtitle: "Редактор кода с подсветкой, картинки и теги — на подходе."
-        )
-        .navigationTitle("Создать")
-    }
-}
-
-private struct ProfilePlaceholder: View {
-    @Environment(AppState.self) private var appState
-    let user: AppUser
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ProfilePreviewCard(user: user)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Статистика")
-                        .font(.headline)
-                    HStack(spacing: 20) {
-                        statColumn(title: "Посты", value: user.postsCount)
-                        statColumn(title: "Подписчики", value: user.followersCount)
-                        statColumn(title: "Подписки", value: user.followingCount)
-                    }
-                }
-                .padding(.horizontal, 4)
-
-                GlassButton(style: .secondary) {
-                    appState.signOut()
-                } label: {
-                    Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
-                }
-            }
-            .padding(20)
-        }
-        .navigationTitle("Профиль")
-        .background(Color(.systemGroupedBackground))
-    }
-
-    private func statColumn(title: String, value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(value)")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }
 

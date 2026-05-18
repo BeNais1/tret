@@ -6,6 +6,7 @@ struct TretApp: App {
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState: AppState
+    @AppStorage("tret.appTheme") private var appThemeRaw = AppTheme.system.rawValue
 
     init() {
         // FirebaseApp.configure() ДОЛЖЕН отработать ДО того, как сервисы
@@ -23,7 +24,7 @@ struct TretApp: App {
         WindowGroup {
             RootView()
                 .environment(appState)
-                .preferredColorScheme(nil)
+                .preferredColorScheme(AppTheme(rawValue: appThemeRaw)?.colorScheme)
                 .task {
                     appState.bootstrap()
                 }

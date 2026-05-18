@@ -20,7 +20,19 @@ final class PostService: PostServiceProtocol, @unchecked Sendable {
     }
 
     func create(_ post: Post) async throws {
-        try firestore.collection(FirestorePath.posts).document(post.id).setData(from: post)
+        let postRef = firestore.collection(FirestorePath.posts).document(post.id)
+        let userRef = firestore.collection(FirestorePath.users).document(post.authorId)
+        let batch = firestore.batch()
+
+        try batch.setData(from: post, forDocument: postRef)
+        batch.updateData(
+            [
+                "postsCount": FieldValue.increment(Int64(1)),
+                "updatedAt": FieldValue.serverTimestamp()
+            ],
+            forDocument: userRef
+        )
+        try await batch.commit()
     }
 
     func fetch(id: String) async throws -> Post? {

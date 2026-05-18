@@ -9,8 +9,13 @@ service cloud.firestore {
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
-    function hasOnlyChangedFields(allowed) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    function isValidUsername(username) {
+      return username is string
+             && username.size() >= 3
+             && username.size() <= 20
+             && username.matches('^[a-z0-9_]+$')
+             && !username.matches('^_.*')
+             && !username.matches('.*_$');
     }
 
     // ---------- Users ----------
@@ -22,8 +27,8 @@ service cloud.firestore {
       allow create: if isOwner(userId)
                     && request.resource.data.id == userId
                     && request.resource.data.email is string
-                    && request.resource.data.username is string
-                    && request.resource.data.usernameLowercase is string
+                    && isValidUsername(request.resource.data.username)
+                    && request.resource.data.usernameLowercase == request.resource.data.username
                     && request.resource.data.followersCount == 0
                     && request.resource.data.followingCount == 0
                     && request.resource.data.postsCount == 0
@@ -75,12 +80,27 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Захватить может только сам user, и только если username ещё не занят.
       allow create: if isSignedIn()
-                    && request.resource.data.userId == request.auth.uid;
+                    && request.resource.data.userId == request.auth.uid
+                    && isValidUsername(usernameLowercase);
       // Освобождение username — только тем, кто им владеет. В MVP username не меняется,
       // но релиз позволит откатить «захват» при ошибке.
       allow delete: if isSignedIn()
                     && resource.data.userId == request.auth.uid;
       allow update: if false;
+    }
+
+    // ---------- Username change requests ----------
+    match /usernameChangeRequests/{requestId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.currentUsername is string
+                    && isValidUsername(request.resource.data.requestedUsername)
+                    && request.resource.data.reason is string
+                    && request.resource.data.reason.size() >= 12
+                    && request.resource.data.reason.size() <= 600
+                    && request.resource.data.status == "pending";
+      allow update, delete: if false;
     }
 
     // ---------- Posts ----------

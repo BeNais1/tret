@@ -101,8 +101,9 @@ final class OnboardingViewModel {
     // MARK: - Username
 
     func usernameChanged(_ newValue: String) {
-        username = newValue
-        let validation = Validators.validateUsername(newValue)
+        let normalized = newValue.lowercased()
+        username = normalized
+        let validation = Validators.validateUsername(normalized)
         if validation != .valid {
             usernameStatus = .invalid(validation.userMessage ?? "Некорректное имя")
             usernameCheckTask?.cancel()

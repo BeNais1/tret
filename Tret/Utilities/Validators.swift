@@ -25,9 +25,7 @@ enum HashtagValidationResult: Equatable {
 enum Validators {
 
     private static let usernameAllowed: CharacterSet = {
-        var set = CharacterSet.alphanumerics
-        set.insert(charactersIn: "_")
-        return set
+        CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_")
     }()
 
     static func validateUsername(_ raw: String) -> UsernameValidationResult {
@@ -74,7 +72,7 @@ extension UsernameValidationResult {
         case .empty: return "Введите имя пользователя"
         case .tooShort: return "Минимум \(AppConstants.minUsernameLength) символа"
         case .tooLong: return "Максимум \(AppConstants.maxUsernameLength) символов"
-        case .invalidCharacters: return "Разрешены только латинские буквы, цифры и _"
+        case .invalidCharacters: return "Разрешены только строчные латинские буквы, цифры и _"
         case .startsOrEndsWithUnderscore: return "Не может начинаться или заканчиваться на _"
         }
     }

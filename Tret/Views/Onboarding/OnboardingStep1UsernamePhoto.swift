@@ -10,7 +10,7 @@ struct OnboardingStep1UsernamePhoto: View {
 
                 StepHeader(
                     title: "Расскажи, кто ты",
-                    subtitle: "Выбери уникальное имя пользователя. Аватар возьмём из твоего Google-аккаунта."
+                    subtitle: "Выбери уникальный username: строчные английские буквы, цифры и подчёркивание. Аватар возьмём из твоего Google-аккаунта."
                 )
 
                 // Avatar (read-only: используем фото из Google).

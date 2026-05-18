@@ -3,7 +3,7 @@ import Foundation
 enum UsernameGenerator {
 
     static func slugify(_ raw: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_")
         let lowered = raw.lowercased()
         let scalars = lowered.unicodeScalars.map { scalar -> Character in
             if allowed.contains(scalar) { return Character(scalar) }

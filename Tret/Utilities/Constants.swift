@@ -30,10 +30,12 @@ enum FirestorePath {
     static let users = "users"
     static let usernames = "usernames"
     static let posts = "posts"
+    static let usernameChangeRequests = "usernameChangeRequests"
 
     static func user(_ uid: String) -> String { "\(users)/\(uid)" }
     static func username(_ lower: String) -> String { "\(usernames)/\(lower)" }
     static func post(_ id: String) -> String { "\(posts)/\(id)" }
+    static func usernameChangeRequest(_ id: String) -> String { "\(usernameChangeRequests)/\(id)" }
 
     static func followers(of uid: String) -> String { "\(users)/\(uid)/followers" }
     static func following(of uid: String) -> String { "\(users)/\(uid)/following" }
