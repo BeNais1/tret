@@ -48,7 +48,19 @@ final class PostService: PostServiceProtocol, @unchecked Sendable {
     }
 
     func delete(id: String, authorId: String) async throws {
-        try await firestore.collection(FirestorePath.posts).document(id).delete()
+        let postRef = firestore.collection(FirestorePath.posts).document(id)
+        let userRef = firestore.collection(FirestorePath.users).document(authorId)
+
+        let batch = firestore.batch()
+        batch.deleteDocument(postRef)
+        batch.updateData(
+            [
+                "postsCount": FieldValue.increment(Int64(-1)),
+                "updatedAt": FieldValue.serverTimestamp()
+            ],
+            forDocument: userRef
+        )
+        try await batch.commit()
     }
 
     func fetchByAuthor(

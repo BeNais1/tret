@@ -46,7 +46,10 @@ struct HomeFeedView: View {
                                     currentUser: currentUser,
                                     followStateCache: $followStateCache,
                                     topCommentCache: $topCommentCache,
-                                    onHide: { Task { await hideAuthor(authorId: post.authorId) } }
+                                    onHide: { Task { await hideAuthor(authorId: post.authorId) } },
+                                    onDelete: post.authorId == currentUser.id
+                                        ? { Task { await deletePost(postId: post.id) } }
+                                        : nil
                                 )
                                 .onAppear {
                                     Task { await loadMoreIfNeeded(currentPost: post) }
@@ -197,6 +200,17 @@ struct HomeFeedView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    @MainActor
+    private func deletePost(postId: String) async {
+        do {
+            try await PostService.shared.delete(id: postId, authorId: currentUser.id)
+            posts.removeAll { $0.id == postId }
+            topCommentCache.removeValue(forKey: postId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private struct FeedPostCard: View {
@@ -205,6 +219,7 @@ private struct FeedPostCard: View {
     @Binding var followStateCache: [String: Bool]
     @Binding var topCommentCache: [String: TopCommentPreview?]
     let onHide: () -> Void
+    let onDelete: (() -> Void)?
 
     @State private var displayedPost: Post
     @State private var isLiked = false
@@ -227,13 +242,15 @@ private struct FeedPostCard: View {
         currentUser: AppUser,
         followStateCache: Binding<[String: Bool]>,
         topCommentCache: Binding<[String: TopCommentPreview?]>,
-        onHide: @escaping () -> Void
+        onHide: @escaping () -> Void,
+        onDelete: (() -> Void)? = nil
     ) {
         self.post = post
         self.currentUser = currentUser
         self._followStateCache = followStateCache
         self._topCommentCache = topCommentCache
         self.onHide = onHide
+        self.onDelete = onDelete
         _displayedPost = State(initialValue: post)
     }
 
@@ -286,6 +303,7 @@ private struct FeedPostCard: View {
                     currentUserId: currentUser.id,
                     isFollowing: followBinding,
                     onHide: onHide,
+                    onDelete: onDelete,
                     onError: { errorMessage = $0.localizedDescription }
                 )
             }
