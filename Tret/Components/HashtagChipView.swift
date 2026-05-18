@@ -28,10 +28,10 @@ struct HashtagChipView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            Capsule(style: .continuous).fill(.accent.opacity(0.10))
+            Capsule(style: .continuous).fill(Color.accentColor.opacity(0.10))
         )
         .overlay(
-            Capsule(style: .continuous).strokeBorder(.accent.opacity(0.25), lineWidth: 1)
+            Capsule(style: .continuous).strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 1)
         )
     }
 }

@@ -59,7 +59,7 @@ struct OnboardingStep4LinksHashtags: View {
                         } label: {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 22))
-                                .foregroundStyle(.accent)
+                                .foregroundStyle(Color.accentColor)
                         }
                         .disabled(!viewModel.canAddMoreHashtags || viewModel.hashtagInput.isEmpty)
                         .buttonStyle(.plain)

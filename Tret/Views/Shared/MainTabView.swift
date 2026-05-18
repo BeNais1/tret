@@ -1,32 +1,32 @@
 import SwiftUI
 
+enum MainTab: Hashable {
+    case home, create, search, profile
+}
+
 struct MainTabView: View {
 
     let currentUser: AppUser
 
-    @State private var selection: Tab = .home
-
-    enum Tab: Hashable {
-        case home, search, create, profile
-    }
+    @State private var selection: MainTab = .home
 
     var body: some View {
         TabView(selection: $selection) {
-            Tab("Лента", systemImage: "house.fill", value: Tab.home) {
+            Tab("Лента", systemImage: "house.fill", value: MainTab.home) {
                 NavigationStack { HomeFeedPlaceholder() }
             }
 
-            Tab("Создать", systemImage: "plus.circle.fill", value: Tab.create) {
+            Tab("Создать", systemImage: "plus.circle.fill", value: MainTab.create) {
                 NavigationStack { CreatePostPlaceholder() }
             }
 
-            Tab(value: Tab.search, role: .search) {
+            Tab(value: MainTab.search, role: .search) {
                 NavigationStack { SearchPlaceholder() }
             } label: {
                 Label("Поиск", systemImage: "magnifyingglass")
             }
 
-            Tab("Профиль", systemImage: "person.circle.fill", value: Tab.profile) {
+            Tab("Профиль", systemImage: "person.circle.fill", value: MainTab.profile) {
                 NavigationStack { ProfilePlaceholder(user: currentUser) }
             }
         }
