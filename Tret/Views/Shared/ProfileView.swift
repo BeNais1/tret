@@ -2,17 +2,33 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+enum ProfileFeedTab: String, Hashable, CaseIterable, Sendable {
+    case posts
+    case reposts
+
+    var title: String {
+        switch self {
+        case .posts:   return "Посты"
+        case .reposts: return "Репосты"
+        }
+    }
+}
+
 struct ProfileView: View {
     let user: AppUser
     let viewerUserId: String
     var hidesTabBar = false
 
+    @State private var selectedTab: ProfileFeedTab = .posts
     @State private var showSettings = false
     @State private var showEditProfile = false
     @State private var showUsernameRequest = false
     @State private var recentPosts: [Post] = []
+    @State private var reposts: [Repost] = []
     @State private var isLoadingPosts = false
+    @State private var isLoadingReposts = false
     @State private var postsErrorMessage: String?
+    @State private var repostsErrorMessage: String?
     @State private var isFollowing: Bool?
     @State private var isFollowBusy = false
     @State private var followersCountOverride: Int?
@@ -20,6 +36,7 @@ struct ProfileView: View {
 
     private let postService: PostServiceProtocol = PostService.shared
     private let followService: FollowServiceProtocol = FollowService.shared
+    private let repostService: RepostServiceProtocol = RepostService.shared
 
     private var isOwnProfile: Bool {
         user.id == viewerUserId
@@ -37,7 +54,9 @@ struct ProfileView: View {
                 profileActionButton
 
                 statsSection
-                recentPostsSection
+
+                tabPicker
+                tabContent
             }
             .padding(20)
         }
@@ -71,8 +90,14 @@ struct ProfileView: View {
             await loadRecentPosts()
             await loadFollowState()
         }
+        .task(id: tabReloadKey) {
+            if selectedTab == .reposts {
+                await loadReposts()
+            }
+        }
         .refreshable {
             await loadRecentPosts()
+            await loadReposts()
             await loadFollowState()
         }
         .alert("Не удалось загрузить посты", isPresented: postsErrorBinding) {
@@ -80,11 +105,20 @@ struct ProfileView: View {
         } message: {
             Text(postsErrorMessage ?? "")
         }
+        .alert("Не удалось загрузить репосты", isPresented: repostsErrorBinding) {
+            Button("OK", role: .cancel) { repostsErrorMessage = nil }
+        } message: {
+            Text(repostsErrorMessage ?? "")
+        }
         .alert("Не удалось обновить подписку", isPresented: followErrorBinding) {
             Button("OK", role: .cancel) { followErrorMessage = nil }
         } message: {
             Text(followErrorMessage ?? "")
         }
+    }
+
+    private var tabReloadKey: String {
+        "\(user.id)-\(selectedTab.rawValue)"
     }
 
     @ViewBuilder
@@ -195,22 +229,35 @@ struct ProfileView: View {
         }
     }
 
-    private var recentPostsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Недавние посты")
-                .font(.headline)
+    private var tabPicker: some View {
+        Picker("Раздел", selection: $selectedTab) {
+            ForEach(ProfileFeedTab.allCases, id: \.self) { tab in
+                Text(tab.title).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
 
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .posts:    postsSection
+        case .reposts:  repostsSection
+        }
+    }
+
+    private var postsSection: some View {
+        Group {
             if isLoadingPosts && recentPosts.isEmpty {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .padding(.vertical, 10)
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
             } else if recentPosts.isEmpty {
                 Text("Пока нет постов.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
             } else {
                 VStack(spacing: 10) {
                     ForEach(recentPosts) { post in
@@ -218,7 +265,38 @@ struct ProfileView: View {
                             ProfilePostDetailsView(post: post)
                                 .toolbar(.hidden, for: .tabBar)
                         } label: {
-                            ProfilePostRow(post: post)
+                            ProfilePostRow(post: post, repostedBy: nil)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var repostsSection: some View {
+        Group {
+            if isLoadingReposts && reposts.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            } else if reposts.isEmpty {
+                Text("Репостов пока нет.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(reposts) { repost in
+                        NavigationLink {
+                            ProfilePostDetailsView(post: repost.originalPostSnapshot)
+                                .toolbar(.hidden, for: .tabBar)
+                        } label: {
+                            ProfilePostRow(
+                                post: repost.originalPostSnapshot,
+                                repostedBy: user.username
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -234,6 +312,28 @@ struct ProfileView: View {
                 if !isPresented { postsErrorMessage = nil }
             }
         )
+    }
+
+    private var repostsErrorBinding: Binding<Bool> {
+        Binding(
+            get: { repostsErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { repostsErrorMessage = nil }
+            }
+        )
+    }
+
+    @MainActor
+    private func loadReposts() async {
+        guard !isLoadingReposts else { return }
+        isLoadingReposts = true
+        defer { isLoadingReposts = false }
+
+        do {
+            reposts = try await repostService.fetchReposts(of: user.id, pageSize: 20)
+        } catch {
+            repostsErrorMessage = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -304,10 +404,26 @@ struct ProfileView: View {
 
 private struct ProfilePostRow: View {
     let post: Post
+    let repostedBy: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let repostedBy {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.2.squarepath")
+                    Text("@\(repostedBy) репостнул")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+
             HStack {
+                Text("@\(post.authorUsername)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("·")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(DateFormatterHelper.shortRelative(from: post.createdAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)

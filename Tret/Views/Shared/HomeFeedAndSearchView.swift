@@ -253,19 +253,32 @@ private struct FeedPostCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                ProfileAvatarView(
-                    urlString: displayedPost.authorAvatarURL,
-                    size: 38,
-                    initials: ProfileAvatarView.initials(from: displayedPost.authorUsername)
-                )
+                NavigationLink {
+                    RemoteProfileView(
+                        userId: displayedPost.authorId,
+                        viewerUserId: currentUser.id
+                    )
+                    .toolbar(.hidden, for: .tabBar)
+                } label: {
+                    HStack(spacing: 10) {
+                        ProfileAvatarView(
+                            urlString: displayedPost.authorAvatarURL,
+                            size: 38,
+                            initials: ProfileAvatarView.initials(from: displayedPost.authorUsername)
+                        )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("@\(displayedPost.authorUsername)")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text(DateFormatterHelper.shortRelative(from: displayedPost.createdAt))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("@\(displayedPost.authorUsername)")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.primary)
+                            Text(DateFormatterHelper.shortRelative(from: displayedPost.createdAt))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
+
                 Spacer()
 
                 PostMoreMenu(
