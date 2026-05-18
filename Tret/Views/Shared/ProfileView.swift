@@ -347,6 +347,9 @@ private struct ProfilePostRow: View {
 private struct ProfilePostDetailsView: View {
     let post: Post
 
+    @State private var lightboxStartIndex = 0
+    @State private var isLightboxPresented = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -355,23 +358,27 @@ private struct ProfilePostDetailsView: View {
                     .foregroundStyle(.secondary)
 
                 if let text = post.text, !text.isEmpty {
-                    Text(text)
-                        .font(.system(size: 16))
-                        .fixedSize(horizontal: false, vertical: true)
+                    ExpandableTextView(text: text, font: .system(size: 16))
                 }
 
                 if let code = post.code, !code.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(code)
-                            .font(.system(size: 13, design: .monospaced))
-                            .padding(12)
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    CodeSnippetPreviewView(
+                        code: code,
+                        languageId: post.programmingLanguage,
+                        lineCount: post.codeLineCount
+                    )
+                } else if let language = ProgrammingLanguage.find(id: post.programmingLanguage) {
+                    HStack {
+                        LanguageBadgeView(language: language, isSelected: true)
+                        Spacer()
                     }
                 }
 
                 if !post.imageURLs.isEmpty {
-                    Text("Изображений: \(post.imageURLs.count)")
-                        .font(.subheadline)
+                    PostImageGallery(urls: post.imageURLs) { index in
+                        lightboxStartIndex = index
+                        isLightboxPresented = true
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -393,6 +400,9 @@ private struct ProfilePostDetailsView: View {
         .navigationTitle("Пост")
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(.systemGroupedBackground))
+        .fullScreenCover(isPresented: $isLightboxPresented) {
+            ImageLightboxView(urls: post.imageURLs, startIndex: lightboxStartIndex)
+        }
     }
 }
 

@@ -1,6 +1,5 @@
 import SwiftUI
 import FirebaseFirestore
-import Kingfisher
 
 struct HomeFeedView: View {
     let currentUser: AppUser
@@ -212,6 +211,8 @@ private struct FeedPostCard: View {
     @State private var showComments = false
     @State private var errorMessage: String?
     @State private var didLoadInteractionState = false
+    @State private var lightboxStartIndex = 0
+    @State private var isLightboxPresented = false
 
     private let likeService: LikeServiceProtocol = LikeService.shared
     private let repostService: RepostServiceProtocol = RepostService.shared
@@ -271,41 +272,32 @@ private struct FeedPostCard: View {
             }
 
             if let text = displayedPost.text, !text.isEmpty {
-                Text(text)
-                    .font(.system(size: 15))
-                    .fixedSize(horizontal: false, vertical: true)
+                ExpandableTextView(text: text)
             }
 
             if let code = displayedPost.code, !code.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(code)
-                        .font(.system(size: 13, design: .monospaced))
-                        .padding(12)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                CodeSnippetPreviewView(
+                    code: code,
+                    languageId: displayedPost.programmingLanguage,
+                    lineCount: displayedPost.codeLineCount
+                )
+            } else if let language = ProgrammingLanguage.find(id: displayedPost.programmingLanguage) {
+                HStack {
+                    LanguageBadgeView(language: language, isSelected: true)
+                    Spacer()
                 }
             }
 
-            if let firstImageURL = displayedPost.imageURLs.first, let imageURL = URL(string: firstImageURL) {
-                ZStack(alignment: .topTrailing) {
-                    KFImage(imageURL)
-                        .placeholder {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(.thinMaterial)
-                        }
-                        .resizable()
-                        .scaledToFill()
-                        .frame(height: 190)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            if !displayedPost.imageURLs.isEmpty {
+                PostImageGallery(urls: displayedPost.imageURLs) { index in
+                    lightboxStartIndex = index
+                    isLightboxPresented = true
+                }
+            }
 
-                    if displayedPost.imageURLs.count > 1 {
-                        Text("+\(displayedPost.imageURLs.count - 1)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.black.opacity(0.6), in: Capsule())
-                            .padding(8)
-                    }
+            if let preview = displayedPost.topCommentPreview {
+                TopCommentPreviewView(preview: preview) {
+                    showComments = true
                 }
             }
 
@@ -346,6 +338,12 @@ private struct FeedPostCard: View {
                     displayedPost.commentsCount = max(0, displayedPost.commentsCount + delta)
                 }
             }
+        }
+        .fullScreenCover(isPresented: $isLightboxPresented) {
+            ImageLightboxView(
+                urls: displayedPost.imageURLs,
+                startIndex: lightboxStartIndex
+            )
         }
         .alert("Ошибка действия", isPresented: errorBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
