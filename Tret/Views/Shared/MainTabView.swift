@@ -10,11 +10,14 @@ struct MainTabView: View {
 
     @State private var selection: MainTab = .home
     @State private var postDraft = PostDraft()
+    @State private var feedRefreshToken = 0
 
     var body: some View {
         TabView(selection: $selection) {
             Tab("Лента", systemImage: "house.fill", value: MainTab.home) {
-                NavigationStack { HomeFeedPlaceholder() }
+                NavigationStack {
+                    HomeFeedView(currentUser: currentUser, refreshToken: feedRefreshToken)
+                }
             }
 
             Tab("Создать", systemImage: "plus.circle.fill", value: MainTab.create) {
@@ -24,12 +27,15 @@ struct MainTabView: View {
                         draft: $postDraft
                     ) {
                         selection = .home
+                        feedRefreshToken += 1
                     }
                 }
             }
 
             Tab(value: MainTab.search, role: .search) {
-                NavigationStack { SearchPlaceholder() }
+                NavigationStack {
+                    UserSearchView(currentUser: currentUser)
+                }
             } label: {
                 Label("Поиск", systemImage: "magnifyingglass")
             }

@@ -21,7 +21,6 @@ struct ProfileView: View {
                 }
 
                 statsSection
-                usernameSection
             }
             .padding(20)
         }
@@ -39,17 +38,12 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
-                ProfileSettingsView()
+                ProfileSettingsView(user: user)
             }
         }
         .sheet(isPresented: $showEditProfile) {
             NavigationStack {
                 EditProfileView(user: user)
-            }
-        }
-        .sheet(isPresented: $showUsernameRequest) {
-            NavigationStack {
-                UsernameChangeRequestView(user: user)
             }
         }
     }
@@ -116,9 +110,12 @@ struct ProfileView: View {
 }
 
 private struct ProfileSettingsView: View {
+    let user: AppUser
+
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @AppStorage("tret.appTheme") private var appThemeRaw = AppTheme.system.rawValue
+    @State private var showUsernameRequest = false
 
     var body: some View {
         Form {
@@ -127,6 +124,25 @@ private struct ProfileSettingsView: View {
                     ForEach(AppTheme.allCases) { theme in
                         Label(theme.title, systemImage: theme.icon)
                             .tag(theme.rawValue)
+                    }
+                }
+            }
+
+            Section("Аккаунт") {
+                Button {
+                    showUsernameRequest = true
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Сменить username")
+                            Text("@\(user.username)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -142,6 +158,11 @@ private struct ProfileSettingsView: View {
         }
         .navigationTitle("Настройки")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showUsernameRequest) {
+            NavigationStack {
+                UsernameChangeRequestView(user: user)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Готово") { dismiss() }

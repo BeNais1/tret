@@ -56,9 +56,6 @@ struct CreatePostView: View {
                 .disabled(!canPublish || isPublishing)
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            publishBar
-        }
         .onChange(of: selectedPhotoItems.count) { _, _ in
             let items = selectedPhotoItems
             Task { await appendImages(from: items) }
@@ -256,31 +253,6 @@ struct CreatePostView: View {
                 }
             }
         }
-    }
-
-    private var publishBar: some View {
-        VStack(spacing: 8) {
-            GlassButton(
-                style: .primary,
-                isLoading: isPublishing,
-                isEnabled: canPublish && !isPublishing
-            ) {
-                Task { await publish() }
-            } label: {
-                Label("Опубликовать", systemImage: "paperplane.fill")
-            }
-
-            if hasDraft {
-                Text("Черновик сохранится, пока ты ходишь по вкладкам. Очистится после публикации.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .background(.bar)
     }
 
     private func sectionTitle(_ title: String, icon: String) -> some View {

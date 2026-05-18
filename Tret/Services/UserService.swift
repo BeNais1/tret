@@ -4,6 +4,7 @@ import Foundation
 protocol UserServiceProtocol: Sendable {
     func fetchUser(id: String) async throws -> AppUser?
     func checkUsernameAvailable(_ username: String) async throws -> Bool
+    func searchUsers(query: String, limit: Int) async throws -> [AppUser]
     func createUser(_ user: AppUser) async throws
     func updateUser(_ user: AppUser) async throws
 }
@@ -39,6 +40,23 @@ final class UserService: UserServiceProtocol, @unchecked Sendable {
         }
         let document = try await usernamesCollection.document(lower).getDocument()
         return !document.exists
+    }
+
+    func searchUsers(query: String, limit: Int = 25) async throws -> [AppUser] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return [] }
+
+        let clampedLimit = max(1, min(limit, 30))
+        let end = normalized + "\u{f8ff}"
+
+        let snapshot = try await usersCollection
+            .order(by: "usernameLowercase")
+            .start(at: [normalized])
+            .end(at: [end])
+            .limit(to: clampedLimit)
+            .getDocuments()
+
+        return try snapshot.documents.compactMap { try $0.data(as: AppUser.self) }
     }
 
     /// Атомарно создаёт `usernames/{lower}` и `users/{uid}` в одной транзакции.
