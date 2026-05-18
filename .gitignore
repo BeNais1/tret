@@ -1,0 +1,41 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.swiftpm/
+.build/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# SPM
+Package.resolved
+.swiftpm/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Firebase
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+.firebaserc
+
+# Misc
+*.log
+node_modules/
+
+# Keep Firebase iOS config (not a secret; protected by Firestore rules + App Check)
+!GoogleService-Info.plist

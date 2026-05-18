@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Аватарки пользователей: /avatars/{uid}/{filename}
+    match /avatars/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.size < 5 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+    }
+
+    // Картинки постов: /posts/{uid}/{postId}/{filename}
+    match /posts/{userId}/{postId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+    }
+
+    // Всё остальное запрещено
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function hasOnlyChangedFields(allowed) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    }
+
+    // ---------- Users ----------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+
+      // Создание профиля: только сам пользователь, при первом онбординге.
+      // Контр-проверка корректности счётчиков, чтобы клиент не наврал на старте.
+      allow create: if isOwner(userId)
+                    && request.resource.data.id == userId
+                    && request.resource.data.email is string
+                    && request.resource.data.username is string
+                    && request.resource.data.usernameLowercase is string
+                    && request.resource.data.followersCount == 0
+                    && request.resource.data.followingCount == 0
+                    && request.resource.data.postsCount == 0
+                    && request.resource.data.repostsCount == 0;
+
+      // Запрет смены username и id в MVP.
+      // Счётчики обновляет либо сам владелец на стандартных операциях,
+      // либо позже — Cloud Function от имени admin.
+      allow update: if isOwner(userId)
+                    && request.resource.data.id == resource.data.id
+                    && request.resource.data.username == resource.data.username
+                    && request.resource.data.usernameLowercase == resource.data.usernameLowercase
+                    && request.resource.data.email == resource.data.email;
+
+      allow delete: if false;
+
+      // Подколлекции пользователя
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(followerId);
+        allow update: if false;
+      }
+
+      match /following/{followedUserId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      match /hiddenRecommendedUsers/{hiddenUserId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /likes/{postId} {
+        allow read: if isOwner(userId);
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      match /reposts/{repostId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+    }
+
+    // ---------- Usernames (уникальность) ----------
+    match /usernames/{usernameLowercase} {
+      allow read: if isSignedIn();
+      // Захватить может только сам user, и только если username ещё не занят.
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+      // Освобождение username — только тем, кто им владеет. В MVP username не меняется,
+      // но релиз позволит откатить «захват» при ошибке.
+      allow delete: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---------- Posts ----------
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.authorId == request.auth.uid
+                    && request.resource.data.likesCount == 0
+                    && request.resource.data.commentsCount == 0
+                    && request.resource.data.repostsCount == 0;
+
+      // Автор может редактировать текст/код/изображения/язык, но не authorId и не счётчики.
+      allow update: if isSignedIn()
+                    && resource.data.authorId == request.auth.uid
+                    && request.resource.data.authorId == resource.data.authorId;
+
+      allow delete: if isSignedIn()
+                    && resource.data.authorId == request.auth.uid;
+
+      // Лайки поста
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      // Комментарии
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+                      && request.resource.data.authorId == request.auth.uid
+                      && request.resource.data.postId == postId
+                      && request.resource.data.likesCount == 0;
+        allow update: if isSignedIn()
+                      && resource.data.authorId == request.auth.uid
+                      && request.resource.data.authorId == resource.data.authorId
+                      && request.resource.data.postId == resource.data.postId;
+        allow delete: if isSignedIn()
+                      && resource.data.authorId == request.auth.uid;
+
+        match /likes/{userId} {
+          allow read: if isSignedIn();
+          allow create, delete: if isOwner(userId);
+          allow update: if false;
+        }
+      }
+    }
+  }
+}

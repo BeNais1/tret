@@ -1,0 +1,105 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (XcodeGen + xcodebuild)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show available Xcode versions
+        run: ls /Applications | grep Xcode || true
+
+      - name: Select latest Xcode
+        run: |
+          set -e
+          XCODE_PATH=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          echo "Using $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Stub GoogleService-Info.plist (if missing)
+        run: |
+          if [ ! -f "Tret/Resources/GoogleService-Info.plist" ]; then
+            echo "GoogleService-Info.plist not committed — generating stub for CI build"
+            cat > Tret/Resources/GoogleService-Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CLIENT_ID</key><string>0000000000-stub.apps.googleusercontent.com</string>
+            <key>REVERSED_CLIENT_ID</key><string>com.googleusercontent.apps.0000000000-stub</string>
+            <key>API_KEY</key><string>STUB_API_KEY</string>
+            <key>GCM_SENDER_ID</key><string>0000000000</string>
+            <key>PLIST_VERSION</key><string>1</string>
+            <key>BUNDLE_ID</key><string>io.tret.ios</string>
+            <key>PROJECT_ID</key><string>tret-stub</string>
+            <key>STORAGE_BUCKET</key><string>tret-stub.firebasestorage.app</string>
+            <key>IS_ADS_ENABLED</key><false/>
+            <key>IS_ANALYTICS_ENABLED</key><false/>
+            <key>IS_APPINVITE_ENABLED</key><true/>
+            <key>IS_GCM_ENABLED</key><true/>
+            <key>IS_SIGNIN_ENABLED</key><true/>
+            <key>GOOGLE_APP_ID</key><string>1:0000000000:ios:0000000000000000000000</string>
+          </dict>
+          </plist>
+          PLIST
+          fi
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Tret.xcodeproj \
+            -scheme Tret \
+            -clonedSourcePackagesDirPath .spm-cache
+
+      - name: List iOS simulators
+        run: xcrun simctl list devices available iOS
+
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Tret.xcodeproj \
+            -scheme Tret \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -clonedSourcePackagesDirPath .spm-cache \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+          | xcbeautify --renderer github-actions || \
+          xcodebuild build \
+            -project Tret.xcodeproj \
+            -scheme Tret \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -clonedSourcePackagesDirPath .spm-cache \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=
