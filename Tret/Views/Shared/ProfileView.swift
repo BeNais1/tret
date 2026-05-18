@@ -542,7 +542,7 @@ private struct UsernameChangeReasonSection: View {
             HStack {
                 Text("Минимум 12 символов")
                     .font(.caption)
-                    .foregroundStyle(isValid ? .secondary : .red)
+                    .foregroundStyle(isValid ? Color.secondary : Color.red)
                 Spacer()
                 Text("\(reason.count) / 600")
                     .font(.caption.monospacedDigit())
