@@ -475,6 +475,11 @@ private struct EditProfileView: View {
     let user: AppUser
 
     @State private var displayName: String
+    @State private var bio: String
+    @State private var selectedLanguages: [String]
+    @State private var githubRaw: String
+    @State private var websiteRaw: String
+    @State private var hashtags: [String]
     @State private var selectedAvatarItem: PhotosPickerItem?
     @State private var selectedAvatarImage: UIImage?
     @State private var selectedAvatarData: Data?
@@ -487,44 +492,49 @@ private struct EditProfileView: View {
     init(user: AppUser) {
         self.user = user
         _displayName = State(initialValue: user.displayName)
+        _bio = State(initialValue: user.bio)
+        _selectedLanguages = State(initialValue: user.programmingLanguages)
+        _githubRaw = State(initialValue: user.githubURL ?? "")
+        _websiteRaw = State(initialValue: user.websiteURL ?? "")
+        _hashtags = State(initialValue: user.hashtags)
+    }
+
+    private var trimmedDisplayName: String {
+        displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var githubInvalid: Bool {
+        !githubRaw.isEmpty && !URLValidator.isValidGitHub(githubRaw)
+    }
+
+    private var websiteInvalid: Bool {
+        !websiteRaw.isEmpty && !URLValidator.isValid(websiteRaw)
+    }
+
+    private var bioTooLong: Bool {
+        Validators.validateBio(bio) == .tooLong
+    }
+
+    private var canSave: Bool {
+        !isSaving
+            && !trimmedDisplayName.isEmpty
+            && !bioTooLong
+            && !githubInvalid
+            && !websiteInvalid
+            && selectedLanguages.count <= AppConstants.maxProgrammingLanguages
+            && hashtags.count <= AppConstants.maxHashtags
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 avatarEditor
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Имя аккаунта")
-                        .font(.subheadline.weight(.semibold))
-
-                    TextField("Имя", text: $displayName)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Username")
-                        .font(.subheadline.weight(.semibold))
-
-                    HStack {
-                        Text("@\(user.username)")
-                            .font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    Text("Username не меняется при редактировании профиля.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                displayNameSection
+                bioSection
+                languagesSection
+                linksSection
+                hashtagsSection
+                usernameLockedSection
             }
             .padding(20)
         }
@@ -545,17 +555,126 @@ private struct EditProfileView: View {
                         Text("Сохранить").fontWeight(.semibold)
                     }
                 }
-                .disabled(isSaving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSave)
             }
         }
-        .onChange(of: selectedAvatarItem == nil) { _, _ in
-            let item = selectedAvatarItem
-            Task { await loadAvatar(from: item) }
+        .onChange(of: selectedAvatarItem) { _, newItem in
+            Task { await loadAvatar(from: newItem) }
         }
         .alert("Не удалось сохранить", isPresented: errorBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private var displayNameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Имя аккаунта")
+                .font(.subheadline.weight(.semibold))
+
+            TextField("Имя", text: $displayName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var bioSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Био")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(bio.count) / \(AppConstants.maxBioCharacters)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(bioTooLong ? .red : .secondary)
+            }
+
+            ZStack(alignment: .topLeading) {
+                if bio.isEmpty {
+                    Text("Расскажи о себе, своих проектах и интересах…")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                }
+
+                TextEditor(text: $bio)
+                    .font(.system(size: 15))
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 120)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(bioTooLong ? .red.opacity(0.5) : .clear, lineWidth: 1)
+            )
+
+            if bioTooLong {
+                Text("Био не должно превышать \(AppConstants.maxBioCharacters) символов.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private var languagesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Языки программирования")
+                .font(.subheadline.weight(.semibold))
+
+            LanguagePickerView(selected: $selectedLanguages)
+        }
+    }
+
+    private var linksSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            URLFieldView(
+                title: "GitHub",
+                placeholder: "github.com/username",
+                icon: "chevron.left.forwardslash.chevron.right",
+                mode: .github,
+                text: $githubRaw
+            )
+
+            URLFieldView(
+                title: "Личный сайт",
+                placeholder: "https://example.dev",
+                icon: "globe",
+                mode: .generic,
+                text: $websiteRaw
+            )
+        }
+    }
+
+    private var hashtagsSection: some View {
+        HashtagPickerView(hashtags: $hashtags)
+    }
+
+    private var usernameLockedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Username")
+                .font(.subheadline.weight(.semibold))
+
+            HStack {
+                Text("@\(user.username)")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Text("Username меняется отдельно — через запрос админам.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -579,7 +698,7 @@ private struct EditProfileView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Фото профиля")
                     .font(.headline)
-                Text("Можно выбрать новое фото из галереи. Оно сохранится после кнопки «Сохранить».")
+                Text("Новое фото сохранится после кнопки «Сохранить».")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -627,15 +746,19 @@ private struct EditProfileView: View {
 
     @MainActor
     private func save() async {
-        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, !isSaving else { return }
+        guard canSave else { return }
 
         isSaving = true
         defer { isSaving = false }
 
         do {
             var updated = user
-            updated.displayName = trimmedName
+            updated.displayName = trimmedDisplayName
+            updated.bio = bio
+            updated.programmingLanguages = selectedLanguages
+            updated.githubURL = githubRaw.isEmpty ? nil : URLValidator.normalize(githubRaw)
+            updated.websiteURL = websiteRaw.isEmpty ? nil : URLValidator.normalize(websiteRaw)
+            updated.hashtags = hashtags
 
             if let selectedAvatarData {
                 let url = try await storageService.uploadAvatar(userId: user.id, imageData: selectedAvatarData)
