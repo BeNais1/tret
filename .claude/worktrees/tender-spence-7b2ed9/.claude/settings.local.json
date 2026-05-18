@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\Users\\\\boris\\\\Desktop\\\\tret\" && find Tret/Views/Onboarding -type f 2>/dev/null | head -30)"
+    ]
+  }
+}
