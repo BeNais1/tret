@@ -11,6 +11,7 @@ struct HomeFeedView: View {
     @State private var hiddenUserIds: Set<String> = []
     @State private var followingUserIds: Set<String> = []
     @State private var followStateCache: [String: Bool] = [:]
+    @State private var topCommentCache: [String: TopCommentPreview?] = [:]
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var canLoadMore = true
@@ -44,6 +45,7 @@ struct HomeFeedView: View {
                                     post: post,
                                     currentUser: currentUser,
                                     followStateCache: $followStateCache,
+                                    topCommentCache: $topCommentCache,
                                     onHide: { Task { await hideAuthor(authorId: post.authorId) } }
                                 )
                                 .onAppear {
@@ -201,6 +203,7 @@ private struct FeedPostCard: View {
     let post: Post
     let currentUser: AppUser
     @Binding var followStateCache: [String: Bool]
+    @Binding var topCommentCache: [String: TopCommentPreview?]
     let onHide: () -> Void
 
     @State private var displayedPost: Post
@@ -217,16 +220,19 @@ private struct FeedPostCard: View {
     private let likeService: LikeServiceProtocol = LikeService.shared
     private let repostService: RepostServiceProtocol = RepostService.shared
     private let followService: FollowServiceProtocol = FollowService.shared
+    private let commentService: CommentServiceProtocol = CommentService.shared
 
     init(
         post: Post,
         currentUser: AppUser,
         followStateCache: Binding<[String: Bool]>,
+        topCommentCache: Binding<[String: TopCommentPreview?]>,
         onHide: @escaping () -> Void
     ) {
         self.post = post
         self.currentUser = currentUser
         self._followStateCache = followStateCache
+        self._topCommentCache = topCommentCache
         self.onHide = onHide
         _displayedPost = State(initialValue: post)
     }
@@ -387,6 +393,42 @@ private struct FeedPostCard: View {
                 errorMessage = error.localizedDescription
             }
         }
+
+        await loadTopCommentIfNeeded()
+    }
+
+    @MainActor
+    private func loadTopCommentIfNeeded() async {
+        guard displayedPost.commentsCount > 0 else {
+            displayedPost.topCommentPreview = nil
+            return
+        }
+
+        if let cached = topCommentCache[displayedPost.id] {
+            displayedPost.topCommentPreview = cached
+            return
+        }
+
+        do {
+            let topComment = try await commentService.fetchByPost(
+                postId: displayedPost.id,
+                sortedByLikes: true,
+                pageSize: 1
+            ).first
+
+            let preview = topComment.map {
+                TopCommentPreview(
+                    commentId: $0.id,
+                    authorUsername: $0.authorUsername,
+                    text: $0.text,
+                    likesCount: $0.likesCount
+                )
+            }
+            topCommentCache[displayedPost.id] = preview
+            displayedPost.topCommentPreview = preview
+        } catch {
+            // тихо игнорируем — ленте не критично, превью просто не появится
+        }
     }
 
     @MainActor
@@ -475,11 +517,23 @@ private struct PostCommentsSheet: View {
     @State private var isLoading = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var sortByLikes = true
 
     private let commentService: CommentServiceProtocol = CommentService.shared
 
     var body: some View {
         List {
+            Section {
+                Picker("Сортировка", selection: $sortByLikes) {
+                    Text("Топ").tag(true)
+                    Text("Новые").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 6, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+
             if isLoading && comments.isEmpty {
                 HStack {
                     Spacer()
@@ -521,6 +575,9 @@ private struct PostCommentsSheet: View {
             composer
         }
         .task { await loadComments() }
+        .onChange(of: sortByLikes) { _, _ in
+            Task { await loadComments() }
+        }
         .alert("Ошибка комментариев", isPresented: errorBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
@@ -566,14 +623,13 @@ private struct PostCommentsSheet: View {
 
     @MainActor
     private func loadComments() async {
-        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
 
         do {
             comments = try await commentService.fetchByPost(
                 postId: post.id,
-                sortedByLikes: false,
+                sortedByLikes: sortByLikes,
                 pageSize: 100
             )
         } catch {
