@@ -349,89 +349,7 @@ private struct UsernameChangeRequestView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Текущий username")
-                        .font(.subheadline.weight(.semibold))
-                    Text("@\(user.username)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Новый username")
-                        .font(.subheadline.weight(.semibold))
-
-                    HStack(spacing: 8) {
-                        Text("@")
-                            .foregroundStyle(.secondary)
-                        TextField("new_username", text: $requestedUsername)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .textContentType(.username)
-                            .onChange(of: requestedUsername) { _, value in
-                                let lowered = value.lowercased()
-                                if lowered != value {
-                                    requestedUsername = lowered
-                                }
-                            }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(usernameBorderColor, lineWidth: 1)
-                    )
-
-                    if let message = usernameMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(usernameMessageColor)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Причина")
-                        .font(.subheadline.weight(.semibold))
-
-                    ZStack(alignment: .topLeading) {
-                        if reason.isEmpty {
-                            Text("Опиши, почему username нужно изменить. Запрос увидят админы.")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                        }
-
-                        TextEditor(text: $reason)
-                            .font(.system(size: 15))
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 150)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .onChange(of: reason) { _, value in
-                                if value.count > 600 {
-                                    reason = String(value.prefix(600))
-                                }
-                            }
-                    }
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
-                    )
-
-                    HStack {
-                        Text("Минимум 12 символов")
-                            .font(.caption)
-                            .foregroundStyle(reasonIsValid ? .secondary : .red)
-                        Spacer()
-                        Text("\(reason.count) / 600")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            requestForm
             .padding(20)
         }
         .navigationTitle("Смена username")
@@ -442,15 +360,7 @@ private struct UsernameChangeRequestView: View {
                 Button("Отмена") { dismiss() }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await submit() }
-                } label: {
-                    if isSubmitting {
-                        ProgressView()
-                    } else {
-                        Text("Отправить").fontWeight(.semibold)
-                    }
-                }
+                Button { Task { await submit() } } label: { submitButtonLabel }
                 .disabled(!canSubmit || isSubmitting)
             }
         }
@@ -463,6 +373,37 @@ private struct UsernameChangeRequestView: View {
             Button("OK") { dismiss() }
         } message: {
             Text("Username останется прежним, пока админы не одобрят смену.")
+        }
+    }
+
+    private var requestForm: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            UsernameChangeCurrentSection(username: user.username)
+            UsernameChangeRequestedUsernameSection(
+                username: Binding(
+                    get: { requestedUsername },
+                    set: { requestedUsername = $0.lowercased() }
+                ),
+                message: usernameMessage,
+                messageColor: usernameMessageColor,
+                borderColor: usernameBorderColor
+            )
+            UsernameChangeReasonSection(
+                reason: Binding(
+                    get: { reason },
+                    set: { reason = String($0.prefix(600)) }
+                ),
+                isValid: reasonIsValid
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var submitButtonLabel: some View {
+        if isSubmitting {
+            ProgressView()
+        } else {
+            Text("Отправить").fontWeight(.semibold)
         }
     }
 
@@ -535,5 +476,102 @@ private struct UsernameChangeRequestView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private struct UsernameChangeCurrentSection: View {
+    let username: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Текущий username")
+                .font(.subheadline.weight(.semibold))
+            Text("@\(username)")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+        }
+    }
+}
+
+private struct UsernameChangeRequestedUsernameSection: View {
+    @Binding var username: String
+    let message: String?
+    let messageColor: Color
+    let borderColor: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Новый username")
+                .font(.subheadline.weight(.semibold))
+
+            HStack(spacing: 8) {
+                Text("@")
+                    .foregroundStyle(.secondary)
+                TextField("new_username", text: $username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textContentType(.username)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
+            )
+
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(messageColor)
+            }
+        }
+    }
+}
+
+private struct UsernameChangeReasonSection: View {
+    @Binding var reason: String
+    let isValid: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Причина")
+                .font(.subheadline.weight(.semibold))
+
+            editor
+
+            HStack {
+                Text("Минимум 12 символов")
+                    .font(.caption)
+                    .foregroundStyle(isValid ? .secondary : .red)
+                Spacer()
+                Text("\(reason.count) / 600")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var editor: some View {
+        ZStack(alignment: .topLeading) {
+            if reason.isEmpty {
+                Text("Опиши, почему username нужно изменить. Запрос увидят админы.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+            }
+
+            TextEditor(text: $reason)
+                .font(.system(size: 15))
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 150)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 }
