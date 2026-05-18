@@ -13,16 +13,13 @@ concurrency:
 
 jobs:
   build:
-    name: Build (XcodeGen + xcodebuild)
+    name: Build unsigned IPA
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Show available Xcode versions
-        run: ls /Applications | grep Xcode || true
 
       - name: Select latest Xcode
         run: |
@@ -78,28 +75,47 @@ jobs:
             -scheme Tret \
             -clonedSourcePackagesDirPath .spm-cache
 
-      - name: List iOS simulators
-        run: xcrun simctl list devices available iOS
-
-      - name: Build for iOS Simulator
+      - name: Build unsigned .app for iOS device
         run: |
           set -o pipefail
           xcodebuild build \
             -project Tret.xcodeproj \
             -scheme Tret \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
             -clonedSourcePackagesDirPath .spm-cache \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY= \
-          | xcbeautify --renderer github-actions || \
-          xcodebuild build \
-            -project Tret.xcodeproj \
-            -scheme Tret \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
-            -clonedSourcePackagesDirPath .spm-cache \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_BITCODE=NO
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          APP_PATH="build/Build/Products/Release-iphoneos/Tret.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: $APP_PATH not found"
+            echo "Listing build output:"
+            find build -maxdepth 6 -name "*.app" -type d 2>/dev/null || true
+            exit 1
+          fi
+          rm -rf Payload Tret-unsigned.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          # IPA = zip с папкой Payload/AppName.app внутри
+          zip -qr Tret-unsigned.ipa Payload
+          echo "Built unsigned IPA:"
+          ls -la Tret-unsigned.ipa
+          echo "Size: $(du -h Tret-unsigned.ipa | cut -f1)"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tret-unsigned-ipa
+          path: Tret-unsigned.ipa
+          retention-days: 14
+          if-no-files-found: error

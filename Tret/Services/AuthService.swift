@@ -42,6 +42,14 @@ final class AuthService: AuthServiceProtocol {
         )
     }
 
+    private struct GooglePayload: Sendable {
+        let idToken: String
+        let accessToken: String
+        let profileEmail: String?
+        let profileName: String?
+        let profileImageURL: URL?
+    }
+
     func signInWithGoogle(presenter: UIViewController) async throws -> AuthSession {
         guard let clientID = FirebaseApp.app()?.options.clientID else {
             throw ServiceError.underlying("Firebase clientID не сконфигурирован")
@@ -50,7 +58,9 @@ final class AuthService: AuthServiceProtocol {
         let config = GIDConfiguration(clientID: clientID)
         GIDSignIn.sharedInstance.configuration = config
 
-        let googleResult: GIDSignInResult = try await withCheckedThrowingContinuation { continuation in
+        // Достаём только Sendable-значения внутри callback, чтобы не передавать
+        // не-Sendable `GIDSignInResult` через границу континуации (Swift 6).
+        let payload: GooglePayload = try await withCheckedThrowingContinuation { continuation in
             GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -60,27 +70,33 @@ final class AuthService: AuthServiceProtocol {
                     continuation.resume(throwing: ServiceError.underlying("Пустой результат входа Google"))
                     return
                 }
-                continuation.resume(returning: result)
+                guard let idToken = result.user.idToken?.tokenString else {
+                    continuation.resume(throwing: ServiceError.underlying("Google не вернул id_token"))
+                    return
+                }
+                let payload = GooglePayload(
+                    idToken: idToken,
+                    accessToken: result.user.accessToken.tokenString,
+                    profileEmail: result.user.profile?.email,
+                    profileName: result.user.profile?.name,
+                    profileImageURL: result.user.profile?.imageURL(withDimension: 256)
+                )
+                continuation.resume(returning: payload)
             }
         }
 
-        guard let idToken = googleResult.user.idToken?.tokenString else {
-            throw ServiceError.underlying("Google не вернул id_token")
-        }
-        let accessToken = googleResult.user.accessToken.tokenString
-
         let credential = GoogleAuthProvider.credential(
-            withIDToken: idToken,
-            accessToken: accessToken
+            withIDToken: payload.idToken,
+            accessToken: payload.accessToken
         )
 
         let authResult = try await Auth.auth().signIn(with: credential)
         let user = authResult.user
         return AuthSession(
             uid: user.uid,
-            email: user.email ?? googleResult.user.profile?.email ?? "",
-            displayName: user.displayName ?? googleResult.user.profile?.name ?? "",
-            photoURL: user.photoURL ?? googleResult.user.profile?.imageURL(withDimension: 256)
+            email: user.email ?? payload.profileEmail ?? "",
+            displayName: user.displayName ?? payload.profileName ?? "",
+            photoURL: user.photoURL ?? payload.profileImageURL
         )
     }
 

@@ -2,7 +2,7 @@ import Foundation
 
 enum DateFormatterHelper {
 
-    nonisolated(unsafe) private static let absoluteFormatter: DateFormatter = {
+    private static let absoluteFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateStyle = .medium

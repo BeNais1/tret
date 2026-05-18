@@ -4,7 +4,11 @@
       "Bash(curl -sS -o check_run.json https://api.github.com/repos/BeNais1/tret/check-runs/76521017792)",
       "Bash(node -e \"const d=require\\('./check_run.json'\\); console.log\\('summary:', d.output && d.output.summary\\); console.log\\('---'\\); console.log\\('text:', d.output && d.output.text\\); console.log\\('---annotations_url:', d.output && d.output.annotations_url\\); console.log\\('annotations_count:', d.output && d.output.annotations_count\\);\")",
       "Bash(curl -sS -o anns.json \"https://api.github.com/repos/BeNais1/tret/check-runs/76521017792/annotations?per_page=50\")",
-      "Bash(node -e \"const a=require\\('./anns.json'\\); for\\(const x of a\\) console.log\\('['+x.annotation_level+']', x.path+':'+x.start_line, '-', x.message.split\\('\\\\n'\\)[0]\\);\")"
+      "Bash(node -e \"const a=require\\('./anns.json'\\); for\\(const x of a\\) console.log\\('['+x.annotation_level+']', x.path+':'+x.start_line, '-', x.message.split\\('\\\\n'\\)[0]\\);\")",
+      "Bash(curl -sS -o jobs.json https://api.github.com/repos/BeNais1/tret/actions/runs/26033371785/jobs)",
+      "Bash(node -e \"const d=require\\('./jobs.json'\\); const j=d.jobs[0]; console.log\\('check_run_url:', j.check_run_url\\);\")",
+      "Bash(curl -sS -o anns.json \"https://api.github.com/repos/BeNais1/tret/check-runs/76524931850/annotations?per_page=50\")",
+      "Bash(node -e \"const a=require\\('./anns.json'\\); console.log\\('total:', a.length\\); for\\(const x of a\\) console.log\\('['+x.annotation_level+']', x.path+':'+x.start_line, '-', x.message.split\\('\\\\n'\\).slice\\(0,2\\).join\\(' | '\\)\\);\")"
     ]
   }
 }
