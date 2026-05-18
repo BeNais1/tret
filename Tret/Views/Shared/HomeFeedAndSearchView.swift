@@ -6,44 +6,60 @@ struct HomeFeedView: View {
     let currentUser: AppUser
     let refreshToken: Int
 
+    @State private var feedKind: FeedKind = .recommended
     @State private var posts: [Post] = []
     @State private var lastDocument: DocumentSnapshot?
     @State private var hiddenUserIds: Set<String> = []
+    @State private var followingUserIds: Set<String> = []
+    @State private var followStateCache: [String: Bool] = [:]
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var canLoadMore = true
     @State private var errorMessage: String?
 
     private let feedService: FeedServiceProtocol = FeedService.shared
+    private let followService: FollowServiceProtocol = FollowService.shared
 
     var body: some View {
-        Group {
-            if isLoading && posts.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if posts.isEmpty {
-                ContentUnavailableView(
-                    "Пока нет постов",
-                    systemImage: "newspaper",
-                    description: Text("Опубликуй первый пост или потяни экран вниз для обновления.")
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(posts) { post in
-                            FeedPostCard(post: post, currentUser: currentUser)
+        VStack(spacing: 0) {
+            Picker("Лента", selection: $feedKind) {
+                Text("Рекомендации").tag(FeedKind.recommended)
+                Text("Подписки").tag(FeedKind.following)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+
+            Group {
+                if isLoading && posts.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if posts.isEmpty {
+                    emptyState
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(posts) { post in
+                                FeedPostCard(
+                                    post: post,
+                                    currentUser: currentUser,
+                                    followStateCache: $followStateCache,
+                                    onHide: { Task { await hideAuthor(authorId: post.authorId) } }
+                                )
                                 .onAppear {
                                     Task { await loadMoreIfNeeded(currentPost: post) }
                                 }
-                        }
+                            }
 
-                        if isLoadingMore {
-                            ProgressView()
-                                .padding(.vertical, 8)
+                            if isLoadingMore {
+                                ProgressView()
+                                    .padding(.vertical, 8)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
                 }
             }
         }
@@ -51,10 +67,31 @@ struct HomeFeedView: View {
         .background(Color(.systemGroupedBackground))
         .task(id: refreshToken) { await reload() }
         .refreshable { await reload() }
+        .onChange(of: feedKind) { _, _ in
+            Task { await switchFeed() }
+        }
         .alert("Не удалось загрузить ленту", isPresented: errorBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        switch feedKind {
+        case .recommended:
+            ContentUnavailableView(
+                "Пока нет постов",
+                systemImage: "newspaper",
+                description: Text("Опубликуй первый пост или потяни экран вниз для обновления.")
+            )
+        case .following:
+            ContentUnavailableView(
+                "Ничего от твоих подписок",
+                systemImage: "person.2",
+                description: Text("Подпишись на других программистов — здесь появятся их посты.")
+            )
         }
     }
 
@@ -74,18 +111,30 @@ struct HomeFeedView: View {
         defer { isLoading = false }
 
         do {
-            hiddenUserIds = try await feedService.fetchHiddenUserIds(of: currentUser.id)
-            let page = try await feedService.fetchRecommended(
-                after: nil,
-                currentUserId: currentUser.id,
-                hiddenUserIds: hiddenUserIds
-            )
+            async let hiddenTask = feedService.fetchHiddenUserIds(of: currentUser.id)
+            async let followingTask = feedService.fetchFollowingUserIds(of: currentUser.id)
+            hiddenUserIds = try await hiddenTask
+            followingUserIds = try await followingTask
+
+            for id in followingUserIds {
+                followStateCache[id] = true
+            }
+
+            let page = try await fetchPage(after: nil)
             posts = page.posts
             lastDocument = page.lastDocument
             canLoadMore = page.lastDocument != nil && !page.posts.isEmpty
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func switchFeed() async {
+        posts = []
+        lastDocument = nil
+        canLoadMore = true
+        await reload()
     }
 
     @MainActor
@@ -107,15 +156,42 @@ struct HomeFeedView: View {
         defer { isLoadingMore = false }
 
         do {
-            let page = try await feedService.fetchRecommended(
-                after: lastDocument,
-                currentUserId: currentUser.id,
-                hiddenUserIds: hiddenUserIds
-            )
-
+            let page = try await fetchPage(after: lastDocument)
             posts.append(contentsOf: page.posts)
             self.lastDocument = page.lastDocument
             canLoadMore = page.lastDocument != nil && !page.posts.isEmpty
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func fetchPage(after document: DocumentSnapshot?) async throws -> FeedPage {
+        switch feedKind {
+        case .recommended:
+            return try await feedService.fetchRecommended(
+                after: document,
+                currentUserId: currentUser.id,
+                hiddenUserIds: hiddenUserIds
+            )
+        case .following:
+            // TODO(stage-A+): batch fetchFollowing past 30 authors (Firestore `in` limit).
+            return try await feedService.fetchFollowing(
+                after: document,
+                currentUserId: currentUser.id,
+                followingUserIds: followingUserIds
+            )
+        }
+    }
+
+    @MainActor
+    private func hideAuthor(authorId: String) async {
+        do {
+            try await followService.hideFromRecommendations(
+                currentUserId: currentUser.id,
+                hiddenUserId: authorId
+            )
+            hiddenUserIds.insert(authorId)
+            posts.removeAll { $0.authorId == authorId }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -125,6 +201,8 @@ struct HomeFeedView: View {
 private struct FeedPostCard: View {
     let post: Post
     let currentUser: AppUser
+    @Binding var followStateCache: [String: Bool]
+    let onHide: () -> Void
 
     @State private var displayedPost: Post
     @State private var isLiked = false
@@ -137,11 +215,32 @@ private struct FeedPostCard: View {
 
     private let likeService: LikeServiceProtocol = LikeService.shared
     private let repostService: RepostServiceProtocol = RepostService.shared
+    private let followService: FollowServiceProtocol = FollowService.shared
 
-    init(post: Post, currentUser: AppUser) {
+    init(
+        post: Post,
+        currentUser: AppUser,
+        followStateCache: Binding<[String: Bool]>,
+        onHide: @escaping () -> Void
+    ) {
         self.post = post
         self.currentUser = currentUser
+        self._followStateCache = followStateCache
+        self.onHide = onHide
         _displayedPost = State(initialValue: post)
+    }
+
+    private var followBinding: Binding<Bool?> {
+        Binding(
+            get: { followStateCache[displayedPost.authorId] },
+            set: { newValue in
+                if let newValue {
+                    followStateCache[displayedPost.authorId] = newValue
+                } else {
+                    followStateCache.removeValue(forKey: displayedPost.authorId)
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -161,6 +260,14 @@ private struct FeedPostCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+
+                PostMoreMenu(
+                    authorId: displayedPost.authorId,
+                    currentUserId: currentUser.id,
+                    isFollowing: followBinding,
+                    onHide: onHide,
+                    onError: { errorMessage = $0.localizedDescription }
+                )
             }
 
             if let text = displayedPost.text, !text.isEmpty {
@@ -268,6 +375,19 @@ private struct FeedPostCard: View {
             isReposted = try await reposted
         } catch {
             errorMessage = error.localizedDescription
+        }
+
+        if displayedPost.authorId != currentUser.id,
+           followStateCache[displayedPost.authorId] == nil {
+            do {
+                let following = try await followService.isFollowing(
+                    currentUserId: currentUser.id,
+                    targetUserId: displayedPost.authorId
+                )
+                followStateCache[displayedPost.authorId] = following
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

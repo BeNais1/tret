@@ -13,11 +13,20 @@ struct ProfileView: View {
     @State private var recentPosts: [Post] = []
     @State private var isLoadingPosts = false
     @State private var postsErrorMessage: String?
+    @State private var isFollowing: Bool?
+    @State private var isFollowBusy = false
+    @State private var followersCountOverride: Int?
+    @State private var followErrorMessage: String?
 
     private let postService: PostServiceProtocol = PostService.shared
+    private let followService: FollowServiceProtocol = FollowService.shared
 
     private var isOwnProfile: Bool {
         user.id == viewerUserId
+    }
+
+    private var followersDisplayCount: Int {
+        followersCountOverride ?? user.followersCount
     }
 
     var body: some View {
@@ -25,13 +34,7 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 20) {
                 ProfilePreviewCard(user: user)
 
-                if isOwnProfile {
-                    GlassButton(style: .secondary) {
-                        showEditProfile = true
-                    } label: {
-                    Label("Редактировать профиль", systemImage: "pencil")
-                }
-                }
+                profileActionButton
 
                 statsSection
                 recentPostsSection
@@ -66,14 +69,63 @@ struct ProfileView: View {
         }
         .task(id: user.id) {
             await loadRecentPosts()
+            await loadFollowState()
         }
         .refreshable {
             await loadRecentPosts()
+            await loadFollowState()
         }
         .alert("Не удалось загрузить посты", isPresented: postsErrorBinding) {
             Button("OK", role: .cancel) { postsErrorMessage = nil }
         } message: {
             Text(postsErrorMessage ?? "")
+        }
+        .alert("Не удалось обновить подписку", isPresented: followErrorBinding) {
+            Button("OK", role: .cancel) { followErrorMessage = nil }
+        } message: {
+            Text(followErrorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var profileActionButton: some View {
+        if isOwnProfile {
+            GlassButton(style: .secondary) {
+                showEditProfile = true
+            } label: {
+                Label("Редактировать профиль", systemImage: "pencil")
+            }
+        } else {
+            switch isFollowing {
+            case .some(true):
+                GlassButton(
+                    style: .secondary,
+                    isLoading: isFollowBusy
+                ) {
+                    Task { await toggleFollow(currentlyFollowing: true) }
+                } label: {
+                    Label("Вы подписаны", systemImage: "checkmark")
+                }
+            case .some(false):
+                GlassButton(
+                    style: .primary,
+                    isLoading: isFollowBusy
+                ) {
+                    Task { await toggleFollow(currentlyFollowing: false) }
+                } label: {
+                    Label("Подписаться", systemImage: "person.fill.badge.plus")
+                }
+            case .none:
+                GlassButton(
+                    style: .secondary,
+                    isLoading: true,
+                    isEnabled: false
+                ) {
+                    // no-op: state still loading
+                } label: {
+                    Text("")
+                }
+            }
         }
     }
 
@@ -84,9 +136,62 @@ struct ProfileView: View {
 
             HStack(spacing: 12) {
                 statColumn(title: "Посты", value: user.postsCount)
-                statColumn(title: "Подписчики", value: user.followersCount)
+                statColumn(title: "Подписчики", value: followersDisplayCount)
                 statColumn(title: "Подписки", value: user.followingCount)
             }
+        }
+    }
+
+    private var followErrorBinding: Binding<Bool> {
+        Binding(
+            get: { followErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { followErrorMessage = nil }
+            }
+        )
+    }
+
+    @MainActor
+    private func loadFollowState() async {
+        guard !isOwnProfile else { return }
+        do {
+            let following = try await followService.isFollowing(
+                currentUserId: viewerUserId,
+                targetUserId: user.id
+            )
+            isFollowing = following
+        } catch {
+            followErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func toggleFollow(currentlyFollowing: Bool) async {
+        guard !isFollowBusy else { return }
+        isFollowBusy = true
+        defer { isFollowBusy = false }
+
+        let baseCount = followersDisplayCount
+
+        do {
+            if currentlyFollowing {
+                followersCountOverride = max(0, baseCount - 1)
+                try await followService.unfollow(
+                    currentUserId: viewerUserId,
+                    targetUserId: user.id
+                )
+                isFollowing = false
+            } else {
+                followersCountOverride = baseCount + 1
+                try await followService.follow(
+                    currentUserId: viewerUserId,
+                    targetUserId: user.id
+                )
+                isFollowing = true
+            }
+        } catch {
+            followersCountOverride = baseCount
+            followErrorMessage = error.localizedDescription
         }
     }
 
