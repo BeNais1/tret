@@ -59,8 +59,8 @@ struct CreatePostView: View {
         .safeAreaInset(edge: .bottom) {
             publishBar
         }
-        .onChange(of: selectedPhotoItems) { _, items in
-            Task { await appendImages(from: items) }
+        .onChange(of: selectedPhotoItemIDs) { _, _ in
+            Task { await appendImages(from: selectedPhotoItems) }
         }
         .alert("Не удалось опубликовать", isPresented: publishErrorBinding) {
             Button("OK", role: .cancel) { publishError = nil }
@@ -344,6 +344,12 @@ struct CreatePostView: View {
                 if !isPresented { publishError = nil }
             }
         )
+    }
+
+    private var selectedPhotoItemIDs: [String] {
+        selectedPhotoItems
+            .enumerated()
+            .map { index, item in item.itemIdentifier ?? "selected-\(index)" }
     }
 
     @MainActor
