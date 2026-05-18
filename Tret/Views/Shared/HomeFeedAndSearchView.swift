@@ -716,10 +716,41 @@ private struct CommentRow: View {
     }
 }
 
+enum UserSearchKind: String, Hashable, CaseIterable, Sendable {
+    case username
+    case hashtag
+    case language
+
+    var title: String {
+        switch self {
+        case .username: return "Username"
+        case .hashtag:  return "Хэштег"
+        case .language: return "Язык"
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .username: return "username"
+        case .hashtag:  return "хэштег"
+        case .language: return "swift, python, go…"
+        }
+    }
+
+    var emptyHint: String {
+        switch self {
+        case .username: return "Введи username, чтобы найти аккаунт."
+        case .hashtag:  return "Введи хэштег без # — найдём, кто пишет на эту тему."
+        case .language: return "Введи название языка — найдём авторов, которые на нём пишут."
+        }
+    }
+}
+
 struct UserSearchView: View {
     let currentUser: AppUser
 
     @State private var searchText = ""
+    @State private var searchKind: UserSearchKind = .username
     @State private var results: [AppUser] = []
     @State private var isSearching = false
     @State private var errorMessage: String?
@@ -729,11 +760,22 @@ struct UserSearchView: View {
 
     var body: some View {
         List {
+            Section {
+                Picker("Поиск по", selection: $searchKind) {
+                    ForEach(UserSearchKind.allCases, id: \.self) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView(
                     "Поиск пользователей",
                     systemImage: "magnifyingglass",
-                    description: Text("Введи username, чтобы найти аккаунт.")
+                    description: Text(searchKind.emptyHint)
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -749,7 +791,7 @@ struct UserSearchView: View {
                 ContentUnavailableView(
                     "Ничего не найдено",
                     systemImage: "person.crop.circle.badge.xmark",
-                    description: Text("Проверь написание username и попробуй снова.")
+                    description: Text("Попробуй другой запрос или переключи режим поиска.")
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -769,9 +811,12 @@ struct UserSearchView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Поиск")
-        .searchable(text: $searchText, prompt: "username")
+        .searchable(text: $searchText, prompt: searchKind.prompt)
         .onChange(of: searchText) { _, newValue in
             scheduleSearch(for: newValue)
+        }
+        .onChange(of: searchKind) { _, _ in
+            scheduleSearch(for: searchText)
         }
         .onDisappear {
             searchTask?.cancel()
@@ -796,31 +841,44 @@ struct UserSearchView: View {
         searchTask?.cancel()
         errorMessage = nil
 
-        let normalized = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalized = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
             isSearching = false
             results = []
             return
         }
 
+        let kind = searchKind
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            await performSearch(query: normalized)
+            await performSearch(query: normalized, kind: kind)
         }
     }
 
     @MainActor
-    private func performSearch(query: String) async {
+    private func performSearch(query: String, kind: UserSearchKind) async {
         isSearching = true
         defer { isSearching = false }
 
         do {
-            let users = try await userService.searchUsers(query: query, limit: 25)
+            let users = try await fetchResults(query: query, kind: kind)
             results = users.filter { $0.id != currentUser.id }
         } catch {
             results = []
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func fetchResults(query: String, kind: UserSearchKind) async throws -> [AppUser] {
+        switch kind {
+        case .username:
+            return try await userService.searchUsers(query: query.lowercased(), limit: 25)
+        case .hashtag:
+            return try await userService.searchUsersByHashtag(query, limit: 25)
+        case .language:
+            guard let language = ProgrammingLanguage.search(query).first else { return [] }
+            return try await userService.searchUsersByLanguage(language.id, limit: 25)
         }
     }
 }

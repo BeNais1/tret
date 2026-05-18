@@ -5,6 +5,8 @@ protocol UserServiceProtocol: Sendable {
     func fetchUser(id: String) async throws -> AppUser?
     func checkUsernameAvailable(_ username: String) async throws -> Bool
     func searchUsers(query: String, limit: Int) async throws -> [AppUser]
+    func searchUsersByHashtag(_ hashtag: String, limit: Int) async throws -> [AppUser]
+    func searchUsersByLanguage(_ languageId: String, limit: Int) async throws -> [AppUser]
     func createUser(_ user: AppUser) async throws
     func updateUser(_ user: AppUser) async throws
 }
@@ -53,6 +55,34 @@ final class UserService: UserServiceProtocol, @unchecked Sendable {
             .order(by: "usernameLowercase")
             .start(at: [normalized])
             .end(at: [end])
+            .limit(to: clampedLimit)
+            .getDocuments()
+
+        return try snapshot.documents.compactMap { try $0.data(as: AppUser.self) }
+    }
+
+    func searchUsersByHashtag(_ hashtag: String, limit: Int = 25) async throws -> [AppUser] {
+        let normalized = Validators.normalizeHashtag(hashtag)
+        guard !normalized.isEmpty else { return [] }
+
+        let clampedLimit = max(1, min(limit, 30))
+
+        let snapshot = try await usersCollection
+            .whereField("hashtags", arrayContains: normalized)
+            .limit(to: clampedLimit)
+            .getDocuments()
+
+        return try snapshot.documents.compactMap { try $0.data(as: AppUser.self) }
+    }
+
+    func searchUsersByLanguage(_ languageId: String, limit: Int = 25) async throws -> [AppUser] {
+        let trimmed = languageId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return [] }
+
+        let clampedLimit = max(1, min(limit, 30))
+
+        let snapshot = try await usersCollection
+            .whereField("programmingLanguages", arrayContains: trimmed)
             .limit(to: clampedLimit)
             .getDocuments()
 
