@@ -19,12 +19,22 @@ final class CommentService: CommentServiceProtocol, @unchecked Sendable {
 
     func create(_ comment: Comment) async throws {
         let path = FirestorePath.postComments(of: comment.postId)
-        try firestore.collection(path).document(comment.id).setData(from: comment)
+        let commentRef = firestore.collection(path).document(comment.id)
+        let postRef = firestore.collection(FirestorePath.posts).document(comment.postId)
+        let batch = firestore.batch()
+        try batch.setData(from: comment, forDocument: commentRef)
+        batch.updateData(["commentsCount": FieldValue.increment(Int64(1))], forDocument: postRef)
+        try await batch.commit()
     }
 
     func delete(commentId: String, postId: String) async throws {
         let path = FirestorePath.postComments(of: postId)
-        try await firestore.collection(path).document(commentId).delete()
+        let commentRef = firestore.collection(path).document(commentId)
+        let postRef = firestore.collection(FirestorePath.posts).document(postId)
+        let batch = firestore.batch()
+        batch.deleteDocument(commentRef)
+        batch.updateData(["commentsCount": FieldValue.increment(Int64(-1))], forDocument: postRef)
+        try await batch.commit()
     }
 
     func fetchByPost(

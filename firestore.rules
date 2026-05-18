@@ -115,8 +115,33 @@ service cloud.firestore {
 
       // Автор может редактировать текст/код/изображения/язык, но не authorId и не счётчики.
       allow update: if isSignedIn()
-                    && resource.data.authorId == request.auth.uid
-                    && request.resource.data.authorId == resource.data.authorId;
+                    && (
+                      (
+                        resource.data.authorId == request.auth.uid
+                        && request.resource.data.authorId == resource.data.authorId
+                        && request.resource.data.id == resource.data.id
+                      )
+                      ||
+                      (
+                        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+                          "likesCount",
+                          "commentsCount",
+                          "repostsCount"
+                        ])
+                        && request.resource.data.likesCount is int
+                        && request.resource.data.commentsCount is int
+                        && request.resource.data.repostsCount is int
+                        && request.resource.data.likesCount >= 0
+                        && request.resource.data.commentsCount >= 0
+                        && request.resource.data.repostsCount >= 0
+                        && request.resource.data.likesCount <= resource.data.likesCount + 1
+                        && request.resource.data.likesCount >= resource.data.likesCount - 1
+                        && request.resource.data.commentsCount <= resource.data.commentsCount + 1
+                        && request.resource.data.commentsCount >= resource.data.commentsCount - 1
+                        && request.resource.data.repostsCount <= resource.data.repostsCount + 1
+                        && request.resource.data.repostsCount >= resource.data.repostsCount - 1
+                      )
+                    );
 
       allow delete: if isSignedIn()
                     && resource.data.authorId == request.auth.uid;

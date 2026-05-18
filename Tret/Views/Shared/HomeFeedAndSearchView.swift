@@ -31,7 +31,7 @@ struct HomeFeedView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(posts) { post in
-                            FeedPostCard(post: post)
+                            FeedPostCard(post: post, currentUser: currentUser)
                                 .onAppear {
                                     Task { await loadMoreIfNeeded(currentPost: post) }
                                 }
@@ -124,33 +124,52 @@ struct HomeFeedView: View {
 
 private struct FeedPostCard: View {
     let post: Post
+    let currentUser: AppUser
+
+    @State private var displayedPost: Post
+    @State private var isLiked = false
+    @State private var isReposted = false
+    @State private var isLikeBusy = false
+    @State private var isRepostBusy = false
+    @State private var showComments = false
+    @State private var errorMessage: String?
+    @State private var didLoadInteractionState = false
+
+    private let likeService: LikeServiceProtocol = LikeService.shared
+    private let repostService: RepostServiceProtocol = RepostService.shared
+
+    init(post: Post, currentUser: AppUser) {
+        self.post = post
+        self.currentUser = currentUser
+        _displayedPost = State(initialValue: post)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 ProfileAvatarView(
-                    urlString: post.authorAvatarURL,
+                    urlString: displayedPost.authorAvatarURL,
                     size: 38,
-                    initials: ProfileAvatarView.initials(from: post.authorUsername)
+                    initials: ProfileAvatarView.initials(from: displayedPost.authorUsername)
                 )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("@\(post.authorUsername)")
+                    Text("@\(displayedPost.authorUsername)")
                         .font(.system(size: 15, weight: .semibold))
-                    Text(DateFormatterHelper.shortRelative(from: post.createdAt))
+                    Text(DateFormatterHelper.shortRelative(from: displayedPost.createdAt))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
 
-            if let text = post.text, !text.isEmpty {
+            if let text = displayedPost.text, !text.isEmpty {
                 Text(text)
                     .font(.system(size: 15))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let code = post.code, !code.isEmpty {
+            if let code = displayedPost.code, !code.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(code)
                         .font(.system(size: 13, design: .monospaced))
@@ -159,7 +178,7 @@ private struct FeedPostCard: View {
                 }
             }
 
-            if let firstImageURL = post.imageURLs.first, let imageURL = URL(string: firstImageURL) {
+            if let firstImageURL = displayedPost.imageURLs.first, let imageURL = URL(string: firstImageURL) {
                 ZStack(alignment: .topTrailing) {
                     KFImage(imageURL)
                         .placeholder {
@@ -171,8 +190,8 @@ private struct FeedPostCard: View {
                         .frame(height: 190)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    if post.imageURLs.count > 1 {
-                        Text("+\(post.imageURLs.count - 1)")
+                    if displayedPost.imageURLs.count > 1 {
+                        Text("+\(displayedPost.imageURLs.count - 1)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 8)
@@ -183,16 +202,330 @@ private struct FeedPostCard: View {
                 }
             }
 
-            HStack(spacing: 14) {
-                Label("\(post.likesCount)", systemImage: "heart")
-                Label("\(post.commentsCount)", systemImage: "message")
-                Label("\(post.repostsCount)", systemImage: "arrow.2.squarepath")
+            HStack(spacing: 8) {
+                FeedActionButton(
+                    title: "\(displayedPost.likesCount)",
+                    icon: isLiked ? "heart.fill" : "heart",
+                    tint: isLiked ? .red : .secondary,
+                    isBusy: isLikeBusy
+                ) {
+                    Task { await toggleLike() }
+                }
+
+                FeedActionButton(
+                    title: "\(displayedPost.commentsCount)",
+                    icon: "message",
+                    tint: .secondary
+                ) {
+                    showComments = true
+                }
+
+                FeedActionButton(
+                    title: "\(displayedPost.repostsCount)",
+                    icon: isReposted ? "arrow.2.squarepath.circle.fill" : "arrow.2.squarepath",
+                    tint: isReposted ? Color("BrandGradientStart") : .secondary,
+                    isBusy: isRepostBusy
+                ) {
+                    Task { await toggleRepost() }
+                }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .task { await ensureInteractionStateLoaded() }
+        .sheet(isPresented: $showComments) {
+            NavigationStack {
+                PostCommentsSheet(post: displayedPost, currentUser: currentUser) { delta in
+                    displayedPost.commentsCount = max(0, displayedPost.commentsCount + delta)
+                }
+            }
+        }
+        .alert("Ошибка действия", isPresented: errorBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented { errorMessage = nil }
+            }
+        )
+    }
+
+    @MainActor
+    private func ensureInteractionStateLoaded() async {
+        guard !didLoadInteractionState else { return }
+        didLoadInteractionState = true
+
+        do {
+            async let liked = likeService.isPostLiked(userId: currentUser.id, postId: displayedPost.id)
+            async let reposted = repostService.isReposted(userId: currentUser.id, postId: displayedPost.id)
+            isLiked = try await liked
+            isReposted = try await reposted
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func toggleLike() async {
+        guard !isLikeBusy else { return }
+        isLikeBusy = true
+        defer { isLikeBusy = false }
+
+        do {
+            if isLiked {
+                try await likeService.unlikePost(userId: currentUser.id, postId: displayedPost.id)
+                isLiked = false
+                displayedPost.likesCount = max(0, displayedPost.likesCount - 1)
+            } else {
+                try await likeService.likePost(userId: currentUser.id, postId: displayedPost.id)
+                isLiked = true
+                displayedPost.likesCount += 1
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func toggleRepost() async {
+        guard !isRepostBusy else { return }
+        isRepostBusy = true
+        defer { isRepostBusy = false }
+
+        do {
+            if isReposted {
+                try await repostService.removeRepost(userId: currentUser.id, postId: displayedPost.id)
+                isReposted = false
+                displayedPost.repostsCount = max(0, displayedPost.repostsCount - 1)
+            } else {
+                try await repostService.repost(userId: currentUser.id, originalPost: displayedPost)
+                isReposted = true
+                displayedPost.repostsCount += 1
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct FeedActionButton: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    var isBusy = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if isBusy {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: icon)
+                }
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+    }
+}
+
+private struct PostCommentsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let post: Post
+    let currentUser: AppUser
+    let onCountChanged: (Int) -> Void
+
+    @State private var comments: [Comment] = []
+    @State private var newCommentText = ""
+    @State private var isLoading = false
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+
+    private let commentService: CommentServiceProtocol = CommentService.shared
+
+    var body: some View {
+        List {
+            if isLoading && comments.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            } else if comments.isEmpty {
+                ContentUnavailableView(
+                    "Комментариев пока нет",
+                    systemImage: "message",
+                    description: Text("Будь первым, кто оставит комментарий.")
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(comments) { comment in
+                    CommentRow(comment: comment)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if comment.authorId == currentUser.id {
+                                Button("Удалить", role: .destructive) {
+                                    Task { await delete(comment: comment) }
+                                }
+                            }
+                        }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Комментарии")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Готово") { dismiss() }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            composer
+        }
+        .task { await loadComments() }
+        .alert("Ошибка комментариев", isPresented: errorBinding) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var composer: some View {
+        HStack(spacing: 10) {
+            TextField("Написать комментарий...", text: $newCommentText, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...4)
+
+            Button {
+                Task { await submitComment() }
+            } label: {
+                if isSubmitting {
+                    ProgressView()
+                } else {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+            }
+            .disabled(trimmedCommentText.isEmpty || isSubmitting)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private var trimmedCommentText: String {
+        newCommentText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented { errorMessage = nil }
+            }
+        )
+    }
+
+    @MainActor
+    private func loadComments() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            comments = try await commentService.fetchByPost(
+                postId: post.id,
+                sortedByLikes: false,
+                pageSize: 100
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func submitComment() async {
+        let text = trimmedCommentText
+        guard !text.isEmpty, !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        do {
+            let comment = Comment(
+                postId: post.id,
+                authorId: currentUser.id,
+                authorUsername: currentUser.username,
+                authorAvatarURL: currentUser.avatarURL,
+                text: text
+            )
+            try await commentService.create(comment)
+            comments.insert(comment, at: 0)
+            newCommentText = ""
+            onCountChanged(1)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func delete(comment: Comment) async {
+        do {
+            try await commentService.delete(commentId: comment.id, postId: post.id)
+            comments.removeAll { $0.id == comment.id }
+            onCountChanged(-1)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CommentRow: View {
+    let comment: Comment
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ProfileAvatarView(
+                urlString: comment.authorAvatarURL,
+                size: 34,
+                initials: ProfileAvatarView.initials(from: comment.authorUsername)
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("@\(comment.authorUsername)")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(DateFormatterHelper.shortRelative(from: comment.createdAt))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(comment.text)
+                    .font(.system(size: 14))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -236,7 +569,11 @@ struct UserSearchView: View {
             } else {
                 ForEach(results) { user in
                     NavigationLink {
-                        ProfileView(user: user)
+                        ProfileView(
+                            user: user,
+                            viewerUserId: currentUser.id,
+                            hidesTabBar: true
+                        )
                     } label: {
                         SearchUserRow(user: user)
                     }

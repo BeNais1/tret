@@ -41,7 +41,9 @@ struct MainTabView: View {
             }
 
             Tab("Профиль", systemImage: "person.circle.fill", value: MainTab.profile) {
-                NavigationStack { ProfileView(user: currentUser) }
+                NavigationStack {
+                    ProfileView(user: currentUser, viewerUserId: currentUser.id)
+                }
             }
         }
         .tint(Color("BrandGradientStart"))

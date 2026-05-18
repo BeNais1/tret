@@ -4,36 +4,54 @@ import UIKit
 
 struct ProfileView: View {
     let user: AppUser
+    let viewerUserId: String
+    var hidesTabBar = false
 
     @State private var showSettings = false
     @State private var showEditProfile = false
     @State private var showUsernameRequest = false
+    @State private var recentPosts: [Post] = []
+    @State private var isLoadingPosts = false
+    @State private var postsErrorMessage: String?
+
+    private let postService: PostServiceProtocol = PostService.shared
+
+    private var isOwnProfile: Bool {
+        user.id == viewerUserId
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 ProfilePreviewCard(user: user)
 
-                GlassButton(style: .secondary) {
-                    showEditProfile = true
-                } label: {
+                if isOwnProfile {
+                    GlassButton(style: .secondary) {
+                        showEditProfile = true
+                    } label: {
                     Label("Редактировать профиль", systemImage: "pencil")
+                }
                 }
 
                 statsSection
+                recentPostsSection
             }
             .padding(20)
         }
         .navigationTitle("Профиль")
         .background(Color(.systemGroupedBackground))
+        .navigationTitle(isOwnProfile ? "Профиль" : "@\(user.username)")
+        .toolbar(hidesTabBar ? .hidden : .visible, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            if isOwnProfile {
+                ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
                 }
                 .accessibilityLabel("Настройки")
+            }
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -45,6 +63,17 @@ struct ProfileView: View {
             NavigationStack {
                 EditProfileView(user: user)
             }
+        }
+        .task(id: user.id) {
+            await loadRecentPosts()
+        }
+        .refreshable {
+            await loadRecentPosts()
+        }
+        .alert("Не удалось загрузить посты", isPresented: postsErrorBinding) {
+            Button("OK", role: .cancel) { postsErrorMessage = nil }
+        } message: {
+            Text(postsErrorMessage ?? "")
         }
     }
 
@@ -58,6 +87,65 @@ struct ProfileView: View {
                 statColumn(title: "Подписчики", value: user.followersCount)
                 statColumn(title: "Подписки", value: user.followingCount)
             }
+        }
+    }
+
+    private var recentPostsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Недавние посты")
+                .font(.headline)
+
+            if isLoadingPosts && recentPosts.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .padding(.vertical, 10)
+            } else if recentPosts.isEmpty {
+                Text("Пока нет постов.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(recentPosts) { post in
+                        NavigationLink {
+                            ProfilePostDetailsView(post: post)
+                                .toolbar(.hidden, for: .tabBar)
+                        } label: {
+                            ProfilePostRow(post: post)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var postsErrorBinding: Binding<Bool> {
+        Binding(
+            get: { postsErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { postsErrorMessage = nil }
+            }
+        )
+    }
+
+    @MainActor
+    private func loadRecentPosts() async {
+        guard !isLoadingPosts else { return }
+        isLoadingPosts = true
+        defer { isLoadingPosts = false }
+
+        do {
+            let result = try await postService.fetchByAuthor(
+                authorId: user.id,
+                pageSize: 20,
+                after: nil
+            )
+            recentPosts = result.posts
+        } catch {
+            postsErrorMessage = error.localizedDescription
         }
     }
 
@@ -106,6 +194,100 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct ProfilePostRow: View {
+    let post: Post
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(DateFormatterHelper.shortRelative(from: post.createdAt))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+
+            if let text = post.text, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14))
+                    .lineLimit(3)
+            } else if let code = post.code, !code.isEmpty {
+                Text(code)
+                    .font(.system(size: 13, design: .monospaced))
+                    .lineLimit(3)
+            } else if !post.imageURLs.isEmpty {
+                Text("Пост с изображениями")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 14) {
+                Label("\(post.likesCount)", systemImage: "heart")
+                Label("\(post.commentsCount)", systemImage: "message")
+                Label("\(post.repostsCount)", systemImage: "arrow.2.squarepath")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct ProfilePostDetailsView: View {
+    let post: Post
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("@\(post.authorUsername)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                if let text = post.text, !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 16))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let code = post.code, !code.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(code)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(12)
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+
+                if !post.imageURLs.isEmpty {
+                    Text("Изображений: \(post.imageURLs.count)")
+                        .font(.subheadline)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Статистика")
+                        .font(.headline)
+
+                    HStack(spacing: 14) {
+                        Label("\(post.likesCount)", systemImage: "heart.fill")
+                        Label("\(post.commentsCount)", systemImage: "message.fill")
+                        Label("\(post.repostsCount)", systemImage: "arrow.2.squarepath")
+                    }
+                    .font(.subheadline)
+                }
+                .padding(14)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(16)
+        }
+        .navigationTitle("Пост")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Color(.systemGroupedBackground))
     }
 }
 
