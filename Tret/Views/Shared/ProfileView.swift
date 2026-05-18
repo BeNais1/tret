@@ -230,8 +230,9 @@ private struct EditProfileView: View {
                 .disabled(isSaving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .onChange(of: selectedAvatarItemID) { _, _ in
-            Task { await loadAvatar(from: selectedAvatarItem) }
+        .onChange(of: selectedAvatarItem == nil) { _, _ in
+            let item = selectedAvatarItem
+            Task { await loadAvatar(from: item) }
         }
         .alert("Не удалось сохранить", isPresented: errorBinding) {
             Button("OK", role: .cancel) { errorMessage = nil }
@@ -289,10 +290,6 @@ private struct EditProfileView: View {
                 if !isPresented { errorMessage = nil }
             }
         )
-    }
-
-    private var selectedAvatarItemID: String {
-        selectedAvatarItem?.itemIdentifier ?? ""
     }
 
     @MainActor

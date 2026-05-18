@@ -23,9 +23,8 @@ final class PostService: PostServiceProtocol, @unchecked Sendable {
         let postRef = firestore.collection(FirestorePath.posts).document(post.id)
         let userRef = firestore.collection(FirestorePath.users).document(post.authorId)
         let batch = firestore.batch()
-        let postData = try Firestore.Encoder().encode(post)
 
-        batch.setData(postData, forDocument: postRef)
+        try batch.setData(from: post, forDocument: postRef)
         batch.updateData(
             [
                 "postsCount": FieldValue.increment(Int64(1)),
